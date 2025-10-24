@@ -24,3 +24,12 @@ class RegistrationForm(forms.ModelForm):
             raise forms.ValidationError("Passwords do not match")
 
         return cleaned_data
+
+    def save(self, commit=True):
+        user = CustomUser.objects.create_user(
+            email=self.cleaned_data.get('email'),
+            name=self.cleaned_data.get('name'),
+            phone=self.cleaned_data.get('phone'),
+            password=self.cleaned_data.get('password')
+        )
+        return user
