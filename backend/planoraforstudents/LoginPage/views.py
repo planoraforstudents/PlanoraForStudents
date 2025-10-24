@@ -15,7 +15,7 @@ def login_view(request):
             if user is not None:
                 login(request, user)
                 messages.success(request, 'Login successful.')
-                return redirect(Dashboard)
+                return redirect('dashboard')  # Redirect to a dashboard or home page
             else:
                 messages.error(request, 'Invalid email or password.')
         else:

@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'LandingPage',
     'RegisterPage',
     'LoginPage',
+    'Dashboard'
 ]
 
 MIDDLEWARE = [
