@@ -40,7 +40,7 @@ export default function VerifyOTP() {
       const res = await axios.post("http://127.0.0.1:8000/api/users/verify-otp/", payload);
       setMessage(res.data.message);
       if (res.data.message.toLowerCase().includes("successful")) {
-        navigate("/login");
+        navigate("/login", { state: { email: email } });
       }
     } catch (err) {
       // prefer backend `error` key, then `message`, then a fallback
