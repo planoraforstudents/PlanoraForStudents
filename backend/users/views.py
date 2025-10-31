@@ -1,4 +1,3 @@
-from datetime import timedelta
 import random
 from django.core.mail import send_mail
 from django.conf import settings
@@ -62,7 +61,7 @@ def register_user(request):
         # This catches if the username in 'defaults' was already taken
         return Response({"error": "Username is already taken"}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return Response({"error": f"An error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"error": f"An unexpected error occurred: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     # --- OTP Logic ---
     otp = str(random.randint(100000, 999999))
@@ -83,12 +82,10 @@ def register_user(request):
             fail_silently=False,
         )
     except Exception as e:
-        # If email sending fails, we shouldn't block registration,
-        # but we must inform the user. In a real app, you'd queue this.
-        # For now, we'll delete the user so they can try again.
-        user.delete()  # Roll back the user creation if email fails
+        # If email fails, roll back user creation so they can try again
+        user.delete()
         OTPVerification.objects.filter(email=email).delete()  # Clean up OTP
-        return Response({"error": f"Failed to send verification email: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"error": f"Failed to send verification email. Please try again."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     return Response({"message": "OTP sent successfully to email"})
 
@@ -159,7 +156,7 @@ def login_user(request):
             user_obj = CustomUser.objects.get(email=normalized_email)
             username_to_auth = user_obj.username
         except CustomUser.DoesNotExist:
-            return Response({"error": "User with this email does not exist"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
     else:
         username_to_auth = identifier.lower()
 
