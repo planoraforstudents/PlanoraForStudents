@@ -1,20 +1,25 @@
+from datetime import timedelta
 import random
 from django.core.mail import send_mail
 from django.conf import settings
+from django.utils import timezone
+from django.db import IntegrityError
+from django.contrib.auth.models import BaseUserManager
+from django.contrib.auth import authenticate, get_user_model
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
-from django.contrib.auth import authenticate, get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.utils import timezone
+
 from .models import CustomUser, OTPVerification
 from .serializers import UserSerializer
-from django.db import IntegrityError
-from django.contrib.auth.models import BaseUserManager
 
+User = get_user_model()
 
 # ---------------- REGISTER USER ----------------
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_user(request):
@@ -25,8 +30,9 @@ def register_user(request):
     if not email or not username or not password:
         return Response({"error": "All fields are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Normalize inputs
+    # --- FIX 1: NORMALIZE INPUTS ---
     try:
+        # Normalize email and username to lowercase/standard format
         email = BaseUserManager.normalize_email(email).lower()
         username = username.strip().lower()
     except Exception as e:
@@ -91,90 +97,257 @@ def register_user(request):
 
 
 # ---------------- VERIFY OTP ----------------
+# Replace your verify_otp with this (dev-friendly, robust)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def verify_otp(request):
     email = request.data.get("email")
-    otp = str(request.data.get("otp")).strip()
+    otp_in = request.data.get("otp")
 
-    if not email or not otp:
+    if not email or otp_in is None:
         return Response({"message": "Email and OTP are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Normalize email for lookup
+    # Normalize incoming values
     try:
-        email = BaseUserManager.normalize_email(email).lower()
+        email = BaseUserManager.normalize_email(email).lower().strip()
     except Exception:
         return Response({"message": "Invalid email"}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Make otp a trimmed string
+    otp = str(otp_in).strip()
+
+    # Find unused OTPs for this email (case-insensitive)
+    otp_qs = OTPVerification.objects.filter(email__iexact=email)
+    if not otp_qs.exists():
+        return Response({"message": "Invalid OTP or email"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Prefer the latest unused OTP record
     try:
-        # Find the OTP in the database
-        otp_record = OTPVerification.objects.get(
-            email=email, otp=otp, is_used=False)
-    except OTPVerification.DoesNotExist:
+        otp_record = otp_qs.filter(
+            is_used=False).order_by('-created_at').first()
+    except Exception:
+        otp_record = None
+
+    if not otp_record:
+        return Response({"message": "Invalid OTP or it has been used"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Compare values in a forgiving way (string compare)
+    if str(otp_record.otp).strip() != otp:
         return Response({"message": "Invalid OTP"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Check if OTP is expired
-    if otp_record.is_expired():
+    # Check expiry (assuming model has is_expired method)
+    if hasattr(otp_record, "is_expired") and otp_record.is_expired():
         otp_record.delete()
         return Response({"message": "OTP expired, please request a new one"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Find the associated user
+    # Find the user and activate
     try:
-        user = CustomUser.objects.get(email=email, is_active=False)
+        user = CustomUser.objects.get(email__iexact=email, is_active=False)
     except CustomUser.DoesNotExist:
         return Response({"message": "User not found or already verified"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Activate the user
     user.is_active = True
     user.is_verified = True
     user.save()
 
-    # Clean up the used OTP
-    otp_record.delete()
+    # Mark used or delete record
+    try:
+        # If your model has is_used field, mark it; otherwise delete.
+        if hasattr(otp_record, "is_used"):
+            otp_record.is_used = True
+            otp_record.save()
+        else:
+            otp_record.delete()
+    except Exception:
+        otp_record.delete()
 
     return Response({"message": "Registration successful!"}, status=status.HTTP_201_CREATED)
 
 
 # ---------------- LOGIN USER ----------------
-@api_view(['POST'])
+@api_view(["POST"])
 @permission_classes([AllowAny])
 def login_user(request):
+    """
+    Handles user login using either email or username.
+    Returns JWT access and refresh tokens if authentication succeeds.
+    """
     identifier = request.data.get("identifier")
     password = request.data.get("password")
 
+    # Validate input
     if not identifier or not password:
-        return Response({"error": "Identifier and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"error": "Identifier and password are required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
-    # Normalize identifier
-    identifier = identifier.strip()
-    username_to_auth = ""
+    # Find the user by email or username
+    User = get_user_model()
+    try:
+        if "@" in identifier:
+            user_obj = User.objects.get(email__iexact=identifier.strip())
+        else:
+            user_obj = User.objects.get(username__iexact=identifier.strip())
+    except User.DoesNotExist:
+        return Response(
+            {"error": "Invalid credentials"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
-    if "@" in identifier:
-        try:
-            normalized_email = BaseUserManager.normalize_email(
-                identifier).lower()
-            user_obj = CustomUser.objects.get(email=normalized_email)
-            username_to_auth = user_obj.username
-        except CustomUser.DoesNotExist:
-            return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
-    else:
-        username_to_auth = identifier.lower()
-
-    user = authenticate(username=username_to_auth, password=password)
-
-    if user is None:
+    # Authenticate using username (Django default)
+    user = authenticate(request, username=user_obj.email, password=password)
+    if not isinstance(user, CustomUser):
         return Response({"error": "Invalid credentials"}, status=status.HTTP_400_BAD_REQUEST)
 
-    if not user.is_active:
-        return Response({"error": "User not verified. Please verify your email first."}, status=status.HTTP_403_FORBIDDEN)
+    if user is None:
+        return Response(
+            {"error": "Invalid credentials"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
+    # Account state checks
+    if not user.is_active:
+        return Response(
+            {"error": "Account not active. Please verify your OTP first."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if getattr(user, "is_verified", False) is False:
+        return Response(
+            {"error": "Account not verified. Please complete OTP verification."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    # Generate JWT tokens
     refresh = RefreshToken.for_user(user)
-    return Response({
-        "message": "Login successful",
-        "access": str(refresh.access_token),
-        "refresh": str(refresh),
-        "user": UserSerializer(user).data
-    })
+    access_token = str(refresh.access_token)
+    refresh_token = str(refresh)
+
+    return Response(
+        {
+            "refresh": refresh_token,
+            "access": access_token,
+            "message": "Login successful",
+            "user": {
+                "id": getattr(user, "id", None),  # ✅ safe for type checker
+                "username": user.username,
+                "email": user.email,
+            },
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def resend_otp(request):
+    email = request.data.get("email")
+
+    if not email:
+        return Response({"message": "Email is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        user = CustomUser.objects.get(email__iexact=email)
+    except CustomUser.DoesNotExist:
+        return Response({"message": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # delete old OTPs for this email
+    OTPVerification.objects.filter(email__iexact=email).delete()
+
+    # generate new OTP
+    otp = str(random.randint(100000, 999999))
+    OTPVerification.objects.create(
+        email=email, otp=otp, is_used=False, created_at=timezone.now())
+
+    # send mail
+    send_mail(
+        "Your new OTP Code",
+        f"Your new verification code is {otp}. It is valid for 5 minutes.",
+        "no-reply@planora.com",
+        [email],
+        fail_silently=False,
+    )
+
+    return Response({"message": "New OTP sent successfully"}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def request_password_reset(request):
+    email = request.data.get("email")
+
+    if not email:
+        return Response({"message": "Email is required"}, status=400)
+
+    try:
+        user = CustomUser.objects.get(email__iexact=email)
+    except CustomUser.DoesNotExist:
+        return Response({"message": "No account found with that email."}, status=404)
+
+    # Delete old OTPs
+    OTPVerification.objects.filter(email__iexact=email).delete()
+
+    otp = str(random.randint(100000, 999999))
+    OTPVerification.objects.create(
+        email=email, otp=otp, is_used=False, created_at=timezone.now())
+
+    send_mail(
+        "Planora Password Reset OTP",
+        f"Your OTP for password reset is {otp}. It will expire in 5 minutes.",
+        "no-reply@planora.com",
+        [email],
+        fail_silently=False,
+    )
+
+    return Response({"message": "Password reset OTP sent to your email."}, status=200)
+
+
+# 2️⃣ Verify reset OTP
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def verify_reset_otp(request):
+    email = request.data.get("email")
+    otp = request.data.get("otp")
+
+    if not email or not otp:
+        return Response({"message": "Email and OTP are required."}, status=400)
+
+    try:
+        record = OTPVerification.objects.get(
+            email__iexact=email, otp=otp, is_used=False)
+    except OTPVerification.DoesNotExist:
+        return Response({"message": "Invalid or expired OTP."}, status=400)
+
+    if hasattr(record, "is_expired") and record.is_expired():
+        record.delete()
+        return Response({"message": "OTP expired. Please request a new one."}, status=400)
+
+    record.is_used = True
+    record.save()
+
+    return Response({"message": "OTP verified successfully."}, status=200)
+
+
+# 3️⃣ Reset password
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def reset_password(request):
+    email = request.data.get("email")
+    new_password = request.data.get("new_password")
+
+    if not email or not new_password:
+        return Response({"message": "Email and new password required."}, status=400)
+
+    try:
+        user = CustomUser.objects.get(email__iexact=email)
+    except CustomUser.DoesNotExist:
+        return Response({"message": "User not found."}, status=404)
+
+    user.set_password(new_password)
+    user.save()
+
+    return Response({"message": "Password reset successfully."}, status=200)
 
 
 # ---------------- GET CURRENT USER (for frontend) ----------------

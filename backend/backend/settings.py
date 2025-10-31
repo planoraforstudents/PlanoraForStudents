@@ -153,6 +153,10 @@ EMAIL_HOST_PASSWORD = 'rakn vxsi nzcl ecmo'
 
 AUTH_USER_MODEL = "users.CustomUser"
 
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 DEFAULT_FROM_EMAIL = 'abhinavgoyal9729@gmail.com'
 
 
