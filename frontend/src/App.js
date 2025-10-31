@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import WelcomePage from "./components/WelcomePage";
 import LandingPage from "./components/LandingPage";
 import Login from "./components/Login";
 import Register from "./components/Register";
@@ -12,7 +13,8 @@ export default function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<WelcomePage />} />
+        <Route path="/home" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/verify-otp" element={<VerifyOtp />} />
