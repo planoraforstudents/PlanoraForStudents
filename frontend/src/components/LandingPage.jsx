@@ -41,26 +41,72 @@ export default function LandingPage() {
   const features = [
     {
       title: "SMART TRACKING",
-      description: "AI-powered progress tracking with detailed analytics and personalized insights",
-      icon: "📊",
+      description:
+        "AI-powered progress tracking with detailed analytics and personalized insights",
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          className="w-12 h-12 md:w-16 md:h-16"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <rect x="3" y="12" width="3.5" height="8" rx="0.5" />
+          <rect x="9" y="8" width="3.5" height="12" rx="0.5" />
+          <rect x="15" y="4" width="3.5" height="16" rx="0.5" />
+        </svg>
+      ),
       gradient: "from-blue-500 to-cyan-500",
     },
     {
       title: "REAL-TIME COLLAB",
       description: "Work together seamlessly with live editing and instant synchronization",
-      icon: "🤝",
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          className="w-12 h-12 md:w-16 md:h-16"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M12 12a3 3 0 100-6 3 3 0 000 6z" />
+          <path d="M4 20a4 4 0 014-4h8a4 4 0 014 4v1H4v-1z" />
+          <path d="M18 8a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+      ),
       gradient: "from-purple-500 to-pink-500",
     },
     {
       title: "PROJECT PORTFOLIO",
       description: "Showcase your work with beautiful templates and custom domains",
-      icon: "🚀",
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          className="w-12 h-12 md:w-16 md:h-16"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M2 21l21-9L11 2 2 21z" />
+          <circle cx="7.5" cy="14.5" r="1.5" fill="#fff" />
+        </svg>
+      ),
       gradient: "from-orange-500 to-red-500",
     },
     {
       title: "PRODUCTIVITY BOOST",
       description: "Smart reminders, time tracking, and focus modes to maximize efficiency",
-      icon: "⚡",
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          className="w-12 h-12 md:w-16 md:h-16"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" />
+        </svg>
+      ),
       gradient: "from-green-500 to-emerald-500",
     },
   ];
